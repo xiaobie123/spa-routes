@@ -1,0 +1,174 @@
+	<!DOCTYPE html>
+<html>
+<head>
+    <title>Example</title>
+</head>
+<body>
+    <ul>
+        <li><a href="/">HOME</a></li>
+        <li><a href="/todo">TODO</a></li>
+        <li><a href="/start/123456">:Identifier</a></li>
+        <li><a href="/pages/p1990">p:Page</a></li>
+        <li><a href="/files/public/index.html">*Path1</a></li>
+        <li><a href="/files/public/assets/index.css">*Path2</a></li>
+        <li><a onclick="router.go('/go');">GOTO Identifier</a></li>
+    </ul>
+    <div id="out"></div>
+</body>
+</html>
+    	<style></style>
+	    		<script>;(function() {
+    if(!window) return;
+    var win = window, supportPushState = 'pushState' in history, evt = supportPushState ? 'popstate' : 'hashchange', self = {};
+
+    var regexps = [
+        /[\-{}\[\]+?.,\\\^$|#\s]/g,
+        /\((.*?)\)/g,
+        /(\(\?)?:\w+/g,
+        /\*\w+/g,
+    ],
+    getRegExp = function(route) {
+        route = route.replace(regexps[0], '\\$&')
+            .replace(regexps[1], '(?:$1)?')
+            .replace(regexps[2], function(match, optional) {
+                return optional ? match : '([^/?]+)'
+            }).replace(regexps[3], '([^?]*?)');
+        return new RegExp('^' + route + '(?:\\?([\\s\\S]*))?$');
+    },
+    extractParams = function(route, fragment) {
+        var params = route.exec(fragment).slice(1);
+        var results = [], i;
+        for(i = 0; i < params.length; i++) {
+            results.push(decodeURIComponent(params[i]) || null);
+        }
+        return results;
+    };
+
+    function Router(opts) {
+        this.opts = opts;
+        this.routes = opts.routes;/*路由的路径*/
+        this.sep = opts.sep || '';
+        this.go(location.pathname, true);
+        this.holdLinks(opts.links || []);/*给导航链接绑定点击事件*/
+        self = this;/*把this 存下来  在后面调用*/
+    }
+    Router.prototype.exec = function(path) {
+        for(var r in this.routes) {
+            var route = getRegExp(r);/*把路由字符串  变成正则表达式*/
+            if (!route.test(path)) {/*不能匹配那就下一个*/
+                continue;
+            }
+            /*下面是执行 路由回调函数的核心方法*/
+            if (typeof this.routes[r] === 'function') {
+                this.routes[r].apply(this, extractParams(route, path));
+            } else {
+                var fn = this.opts[this.routes[r]];
+                fn ? fn.apply(this, extractParams(route, path)) : void 0;
+            }
+        }
+    };
+    Router.prototype.emmit = function(path) {
+        if(supportPushState) {
+            path = path.state.path;
+        }else {
+            path = location.href.split('#')[1] || '';
+        }
+        self.exec(path);
+    }
+    Router.prototype.start = function() {/*绑定 popstate 事件           如果调用history.pushState或history.replaceState会触发回调*/
+        win.addEventListener ? win.addEventListener(evt, this.emmit, false) : win.attachEvent('on' + evt, this.emmit)
+    };
+    Router.prototype.stop = function() {
+        win.removeEventListener ? win.removeEventListener(evt, this.emmit, false) : win.detachEvent('on' + evt, this.emmit);
+    };
+    Router.prototype.go = function(path, isReplace) {/*路径跳转的核心方法*/
+        if(supportPushState) {
+            if(isReplace) {/*替换当前url*/
+                history.replaceState({path: path}, document.title, path);
+            }else {
+                history.pushState({path: path}, document.title, path);
+            }
+        }else {
+            if(this.sep !== '/') {
+                location.hash = this.sep + path;
+            }
+        }//执行完上面的代码url虽然改变了，但是页面还是纹丝不动       下面代码的作用就是 依靠当前路径来找到回调函数，从而执行js
+        this.exec(path);
+    };
+    Router.prototype.back = function() {
+        history.back();
+    };
+    Router.prototype.hold = function(e, href) {
+        var isReplace = false, path = href !== undefined ? href : e.target.pathname; 
+        if(!supportPushState) {/*如果不支持PushState*/
+            path = '/' + path;
+        }else {
+            if(path === history.state.path) {/*如果还是点击的当前页面*/
+                isReplace = true;
+            }
+        }
+        this.go(path, isReplace);
+        if(e && e.preventDefault) {
+            e.preventDefault();      
+        }else {
+            e.returnValue = false;              
+            return false; 
+        }
+    };
+    Router.prototype.holdLinks = function(links) {
+        for(var i = 0; i < links.length; i++) {
+            links[i].onclick = function(e) {
+                var href;
+                if(!e) {/*兼用ie*/
+                    e = win.event;
+                    href = this.pathname;
+                }
+                self.hold(e, href);
+            }
+        }
+    };
+    if(typeof exports === 'object') {
+        module.exports = Router;
+    }else if(typeof define === 'function' && define.amd) {
+        define(function() { return window.MinRouter = Router; })
+    }else {
+        window.MinRouter = Router;
+    }
+})(typeof window != 'undefined' ? window : undefined);
+
+
+
+// usage
+var router = new MinRouter({
+	links: document.querySelectorAll('a[href]'),/*拿到这些菜单的超链接，*/
+	routes: {/*路由规则*/
+		'/': function() {
+			document.getElementById('out').innerHTML = 'You click HOME';
+		},
+		
+		'/todo': 'todo',
+		'/start/:id': 'start',
+		'/pages/p:page': 'page',
+		'/files/*path': 'file',
+		'/go': 'go'
+	},
+	
+	todo: function() {
+		document.getElementById('out').innerHTML = 'You click TODO';
+	},
+	start: function(id) {
+		document.getElementById('out').innerHTML = 'You click identifier, identifier is <span style="color:red;">' + id + '</span>';
+	},
+	page: function(num) {
+		document.getElementById('out').innerHTML = 'You click identifier, Page is <span style="color:red;">' + num + '</span>';
+	},
+	file: function(path) {
+		document.getElementById('out').innerHTML = 'You click Path, path is <span style="color:red;">' + path + '</span>';
+	},
+	go: function() {
+		router.go('/start/654321');
+	}
+});
+router.start();</script>
+	
+<!-- Generated by RunJS (Sun Jan 29 09:26:29 CST 2017) 1ms -->
